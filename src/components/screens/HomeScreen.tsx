@@ -19,7 +19,7 @@ interface Spot {
 }
 
 const NEAREST_SPOT: Spot = {
-  id: 1,
+  id: 0,
   name: "Парк Горького · Секция А",
   dist: "38 м",
   pullupRecord: 24,

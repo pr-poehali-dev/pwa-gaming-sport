@@ -28,7 +28,7 @@ interface Spot {
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
 const NEAREST_SPOT: Spot = {
-  id: 1,
+  id: 0,
   name: "Парк Горького · Секция А",
   dist: "38 м",
   pullupRecord: 24,
@@ -62,6 +62,7 @@ export default function Index({ user, onLogout }: { user: AppUser; onLogout: () 
   const unread = NOTIFICATIONS.filter(n => !n.read).length;
 
   const handleSaveWorkout = useCallback(async (maxReps: number, totalReps: number, mode: string, sets: number[]) => {
+    if (workoutSpot.id <= 0) return; // моковый спот — не сохраняем
     await recordsApi.save(workoutSpot.id, maxReps, totalReps, mode, sets);
   }, [workoutSpot.id]);
 

@@ -81,6 +81,12 @@ def handler(event: dict, context) -> dict:
             cur.close(); conn.close()
             return {"statusCode": 400, "headers": CORS, "body": json.dumps({"error": "Некорректные данные"})}
 
+        # Проверяем что спот существует
+        cur.execute(f"SELECT id FROM {SCHEMA}.spots WHERE id = %s", (spot_id,))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            return {"statusCode": 400, "headers": CORS, "body": json.dumps({"error": "Спот не найден", "code": "spot_not_found"})}
+
         cur.execute(
             f"INSERT INTO {SCHEMA}.records (user_id, spot_id, max_reps, total_reps, mode, sets) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
             (user_id, spot_id, max_reps, total_reps, mode, json.dumps(sets))
