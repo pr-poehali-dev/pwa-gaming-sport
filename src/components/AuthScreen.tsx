@@ -17,6 +17,8 @@ export default function AuthScreen({ onAuth, initialVerifyToken }: Props) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [verifyDone, setVerifyDone] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendDone, setResendDone] = useState(false);
 
   // Auto-verify if token in URL
   useState(() => {
@@ -35,6 +37,15 @@ export default function AuthScreen({ onAuth, initialVerifyToken }: Props) {
     if (res.error) { setError(res.error); return; }
     localStorage.setItem("auth_token", res.token);
     onAuth(res.user, res.token);
+  }
+
+  async function handleResend() {
+    if (!email || resendLoading || resendDone) return;
+    setResendLoading(true);
+    await auth.resend(email);
+    setResendLoading(false);
+    setResendDone(true);
+    setTimeout(() => setResendDone(false), 60000);
   }
 
   async function handleRegister(e: React.FormEvent) {
@@ -71,7 +82,16 @@ export default function AuthScreen({ onAuth, initialVerifyToken }: Props) {
             <p className="text-white/50 text-sm mb-2">Отправили письмо на</p>
             <p className="text-primary font-semibold text-sm mb-6">{email || "твой email"}</p>
             <p className="text-white/30 text-xs">Нажми на ссылку в письме, чтобы активировать аккаунт</p>
-            <button onClick={() => setMode("login")} className="mt-8 text-white/30 text-sm underline">
+
+            <button
+              onClick={handleResend}
+              disabled={resendLoading || resendDone || !email}
+              className="mt-6 w-full py-3.5 rounded-2xl border border-white/15 text-sm font-bold transition-all disabled:opacity-40 active:scale-95"
+            >
+              {resendLoading ? "Отправляем..." : resendDone ? "Письмо отправлено ✓" : "Выслать письмо повторно"}
+            </button>
+
+            <button onClick={() => setMode("login")} className="mt-3 text-white/30 text-sm underline">
               Вернуться ко входу
             </button>
           </>

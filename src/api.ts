@@ -41,6 +41,9 @@ export const auth = {
 
   logout: () =>
     post(URLS.auth, { action: "logout" }),
+
+  resend: (email: string) =>
+    post(URLS.auth, { action: "resend", email }),
 };
 
 // ─── Spots ───────────────────────────────────────────────────────────────────

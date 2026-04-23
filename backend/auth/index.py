@@ -173,6 +173,35 @@ def handler(event: dict, context) -> dict:
             "rank_level": row[3], "streak_days": row[4], "is_admin": row[5]
         })}
 
+    # POST action=resend — повторная отправка письма верификации
+    if method == "POST" and action == "resend":
+        email_addr = (body.get("email") or "").strip().lower()
+        if not email_addr:
+            return {"statusCode": 400, "headers": CORS, "body": json.dumps({"error": "Email обязателен"})}
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT id, nickname, email_verified FROM {SCHEMA}.users WHERE email = %s",
+            (email_addr,)
+        )
+        row = cur.fetchone()
+        if not row:
+            cur.close(); conn.close()
+            return {"statusCode": 200, "headers": CORS, "body": json.dumps({"ok": True})}
+        if row[2]:
+            cur.close(); conn.close()
+            return {"statusCode": 400, "headers": CORS, "body": json.dumps({"error": "Email уже подтверждён"})}
+        new_token = secrets.token_hex(32)
+        expires = datetime.utcnow() + timedelta(hours=24)
+        cur.execute(
+            f"UPDATE {SCHEMA}.users SET verify_token = %s, verify_token_expires_at = %s WHERE id = %s",
+            (new_token, expires, row[0])
+        )
+        conn.commit()
+        cur.close(); conn.close()
+        send_verify_email(email_addr, row[1], new_token, origin)
+        return {"statusCode": 200, "headers": CORS, "body": json.dumps({"ok": True})}
+
     # POST action=logout
     if method == "POST" and action == "logout":
         if token:
