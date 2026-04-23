@@ -30,10 +30,10 @@ async function post(url: string, body: object) {
 }
 
 async function get(url: string, params: Record<string, string> = {}) {
-  const q = new URLSearchParams(params).toString();
-  const res = await fetch(`${url}${q ? "?" + q : ""}`, {
-    headers: { "X-Auth-Token": getToken() },
-  });
+  const token = getToken();
+  const allParams = token ? { ...params, _token: token } : params;
+  const q = new URLSearchParams(allParams).toString();
+  const res = await fetch(`${url}${q ? "?" + q : ""}`);
   return parseResponse(res);
 }
 
