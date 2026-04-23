@@ -1,0 +1,29 @@
+{
+  "tests": [
+    {
+      "name": "Save record - no auth",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "save", "spot_id": 1, "max_reps": 10, "total_reps": 10, "mode": "max", "sets": [10]},
+      "expectedStatus": 401,
+      "expectedBody": {"error": "Требуется авторизация"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Global rating",
+      "method": "GET",
+      "path": "/?action=rating",
+      "expectedStatus": 200,
+      "expectedBody": [],
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Leaderboard - no spot_id",
+      "method": "GET",
+      "path": "/?action=leaderboard",
+      "expectedStatus": 400,
+      "expectedBody": {"error": "spot_id обязателен"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

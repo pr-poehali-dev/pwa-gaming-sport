@@ -1,5 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "@/components/ui/icon";
+import { spots as spotsApi, records as recordsApi } from "@/api";
+
+interface AppUser {
+  id: number;
+  nickname: string;
+  rank_level: number;
+  streak_days: number;
+  is_admin: boolean;
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type Tab = "home" | "map" | "duels" | "rating";
@@ -104,12 +113,12 @@ function NotifPanel({ onClose }: { onClose: () => void }) {
 }
 
 // ─── Workout Flow ─────────────────────────────────────────────────────────────
-function WorkoutFlow({ spot, onClose }: { spot: Spot; onClose: () => void }) {
+function WorkoutFlow({ spot, onClose, onSave }: { spot: Spot; onClose: () => void; onSave?: (maxReps: number, totalReps: number, mode: string, sets: number[]) => Promise<void> }) {
   const [phase, setPhase] = useState<WorkoutPhase>("scanning");
   const [countdown, setCountdown] = useState(3);
   const [sets, setSets] = useState<number[]>([]);
   const [inputVal, setInputVal] = useState("");
-  const [ladderTarget, setLadderTarget] = useState(5);
+  const [_ladderTarget] = useState(5);
   const [mode, setMode] = useState<"max" | "ladder">("max");
   const [isNewRecord, setIsNewRecord] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -146,6 +155,8 @@ function WorkoutFlow({ spot, onClose }: { spot: Spot; onClose: () => void }) {
     setInputVal("");
     if (mode === "ladder" && n < ladderStep) {
       const newMax = Math.max(...newSets);
+      const newTotal = newSets.reduce((a, b) => a + b, 0);
+      if (newMax > 0 && onSave) onSave(newMax, newTotal, mode, newSets).catch(() => {});
       const isRec = newMax > spot.myRecord;
       setIsNewRecord(isRec);
       setPhase("result");
@@ -154,7 +165,12 @@ function WorkoutFlow({ spot, onClose }: { spot: Spot; onClose: () => void }) {
   }
 
   function finish() {
-    const isRec = maxSet > spot.myRecord;
+    const currentMax = sets.length ? Math.max(...sets) : 0;
+    const currentTotal = sets.reduce((a, b) => a + b, 0);
+    if (currentMax > 0 && onSave) {
+      onSave(currentMax, currentTotal, mode, sets).catch(() => {});
+    }
+    const isRec = currentMax > spot.myRecord;
     setIsNewRecord(isRec);
     setPhase("result");
   }
@@ -377,15 +393,16 @@ function WorkoutFlow({ spot, onClose }: { spot: Spot; onClose: () => void }) {
 }
 
 // ─── Home Screen ──────────────────────────────────────────────────────────────
-function HomeScreen({ onScan, onNotif, unread, onProfile }: {
+function HomeScreen({ onScan, onNotif, unread, onProfile, user }: {
   onScan: () => void;
   onNotif: () => void;
   unread: number;
   onProfile: () => void;
+  user: AppUser;
 }) {
   const [bottomTab, setBottomTab] = useState<"progress" | "leaders">("leaders");
-  const streak = 7;
-  const toNextLevel = 12;
+  const streak = user.streak_days;
+  const toNextLevel = Math.max(0, (user.rank_level * 10) - streak);
 
   return (
     <div className="flex flex-col min-h-full">
@@ -393,7 +410,7 @@ function HomeScreen({ onScan, onNotif, unread, onProfile }: {
       <div className="flex items-center justify-between px-5 pt-12 pb-6">
         <button onClick={onProfile} className="relative w-12 h-12">
           <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-sm font-oswald font-bold text-white">
-            ТЫ
+            {user.nickname.slice(0, 2).toUpperCase()}
           </div>
           <svg className="absolute inset-0 w-12 h-12 -rotate-90" viewBox="0 0 48 48">
             <circle cx="24" cy="24" r="22" fill="none" stroke="white" strokeOpacity="0.1" strokeWidth="2.5" />
@@ -728,9 +745,30 @@ function DuelsScreen() {
   );
 }
 
-// ─── Rating Screen ────────────────────────────────────────────────────────────
-function RatingScreen() {
-  const [scope, setScope] = useState<"global" | "spot">("global");
+// ─── Rating Screen (real data) ────────────────────────────────────────────────
+function RatingScreenReal({ currentUserId }: { currentUserId: number }) {
+  const [leaders, setLeaders] = useState<typeof GLOBAL_LEADERS>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    recordsApi.rating().then(data => {
+      if (Array.isArray(data) && data.length > 0) {
+        setLeaders(data.map((r: { rank: number; user_id: number; nickname: string; streak: number; rank_level: number; record: number; total: number }) => ({
+          rank: r.rank,
+          name: r.nickname,
+          avatar: r.nickname.slice(0, 2).toUpperCase(),
+          score: r.total,
+          record: r.record,
+          streak: r.streak,
+          isUser: r.user_id === currentUserId,
+        })));
+      }
+      setLoaded(true);
+    });
+  }, [currentUserId]);
+
+  const display = loaded && leaders.length > 0 ? leaders : GLOBAL_LEADERS;
+  const top3 = display.length >= 3 ? [display[1], display[0], display[2]] : display;
 
   return (
     <div className="flex flex-col h-full">
@@ -739,47 +777,33 @@ function RatingScreen() {
         <p className="text-white/40 text-sm mt-0.5">Кто правит турниками</p>
       </div>
 
-      <div className="flex gap-2 px-5 mb-5">
-        <button
-          onClick={() => setScope("global")}
-          className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${scope === "global" ? "bg-primary text-primary-foreground" : "bg-white/10 text-white/50"}`}
-        >
-          Глобальный
-        </button>
-        <button
-          onClick={() => setScope("spot")}
-          className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${scope === "spot" ? "bg-primary text-primary-foreground" : "bg-white/10 text-white/50"}`}
-        >
-          Парк Горького
-        </button>
-      </div>
-
       {/* Podium */}
-      <div className="px-5 flex items-end justify-center gap-3 mb-5">
-        {[GLOBAL_LEADERS[1], GLOBAL_LEADERS[0], GLOBAL_LEADERS[2]].map((p, i) => {
-          const h = [76, 100, 60];
-          const pos = [2, 1, 3];
-          return (
-            <div key={p.name} className="flex flex-col items-center gap-2">
-              <p className={`text-xs font-oswald font-bold ${i === 1 ? "text-primary" : "text-white"}`}>{p.record}</p>
-              <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white">
-                {p.avatar}
+      {top3.length >= 3 && (
+        <div className="px-5 flex items-end justify-center gap-3 mb-5">
+          {top3.map((p, i) => {
+            const h = [76, 100, 60];
+            const pos = [2, 1, 3];
+            return (
+              <div key={p.name} className="flex flex-col items-center gap-2">
+                <p className={`text-xs font-oswald font-bold ${i === 1 ? "text-primary" : "text-white"}`}>{p.record}</p>
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold ${p.isUser ? "bg-primary text-primary-foreground" : "bg-white/10 text-white"}`}>
+                  {p.avatar}
+                </div>
+                <p className="text-[10px] text-white/50 font-semibold max-w-[56px] text-center truncate">{p.name.split(" ")[0]}</p>
+                <div
+                  className={`w-16 rounded-t-xl flex items-start justify-center pt-2 ${i === 1 ? "bg-primary" : "bg-white/10"}`}
+                  style={{ height: h[i] }}
+                >
+                  <span className={`text-sm font-oswald font-black ${i === 1 ? "text-primary-foreground" : "text-white/40"}`}>{pos[i]}</span>
+                </div>
               </div>
-              <p className="text-[10px] text-white/50 font-semibold max-w-[56px] text-center truncate">{p.name.split(" ")[0]}</p>
-              <div
-                className={`w-16 rounded-t-xl flex items-start justify-center pt-2 ${i === 1 ? "bg-primary" : "bg-white/10"}`}
-                style={{ height: h[i] }}
-              >
-                <span className={`text-sm font-oswald font-black ${i === 1 ? "text-primary-foreground" : "text-white/40"}`}>{pos[i]}</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
-      {/* Full list */}
       <div className="px-5 flex flex-col gap-2 overflow-y-auto pb-4">
-        {GLOBAL_LEADERS.map((u, i) => (
+        {display.map((u) => (
           <div
             key={u.rank}
             className={`flex items-center gap-3 rounded-2xl px-4 py-3 ${u.isUser ? "bg-primary/10 border border-primary/30" : "bg-white/5 border border-white/5"}`}
@@ -798,6 +822,105 @@ function RatingScreen() {
             </div>
           </div>
         ))}
+        {loaded && leaders.length === 0 && (
+          <div className="text-center py-10 text-white/30 text-sm">Пока нет рекордов. Будь первым!</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Map Screen (real spots) ──────────────────────────────────────────────────
+function MapScreenReal({ onScan }: { onScan: (spot: { id: number; name: string; address: string }) => void }) {
+  const [apiSpots, setApiSpots] = useState<{ id: number; name: string; address: string; lat: number; lng: number; spot_record: number; x?: number; y?: number }[]>([]);
+  const [selected, setSelected] = useState<typeof apiSpots[0] | null>(null);
+
+  useEffect(() => {
+    spotsApi.list().then(data => {
+      if (Array.isArray(data)) {
+        setApiSpots(data.map((s, i) => ({ ...s, x: 20 + (i * 23) % 70, y: 20 + (i * 31) % 60 })));
+      }
+    });
+  }, []);
+
+  const display = apiSpots.length > 0 ? apiSpots : SPOTS.map(s => ({ ...s, address: s.name, spot_record: s.record }));
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="px-5 pt-12 pb-4">
+        <h1 className="text-2xl font-oswald font-semibold">Карта споттов</h1>
+        <p className="text-white/40 text-sm mt-0.5">Уличные турники</p>
+      </div>
+
+      <div className="relative mx-5 rounded-2xl overflow-hidden bg-[#0f0f0f] border border-white/10 mb-4" style={{ height: 280 }}>
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <path d="M0 50 Q25 45 50 52 Q75 58 100 50" stroke="white" strokeOpacity="0.06" strokeWidth="3" fill="none" />
+          <path d="M30 0 Q35 25 32 50 Q28 75 30 100" stroke="white" strokeOpacity="0.06" strokeWidth="2" fill="none" />
+        </svg>
+        {display.map((spot, i) => (
+          <button
+            key={spot.id}
+            onClick={() => setSelected(selected?.id === spot.id ? null : spot)}
+            className="absolute -translate-x-1/2 -translate-y-1/2"
+            style={{ left: `${spot.x ?? (20 + i * 20)}%`, top: `${spot.y ?? (20 + i * 15)}%` }}
+          >
+            <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${selected?.id === spot.id ? "bg-primary border-primary scale-125" : "bg-[#1a1a1a] border-white/20"}`}>
+              <Icon name="Dumbbell" size={14} className={selected?.id === spot.id ? "text-black" : "text-primary"} />
+            </div>
+          </button>
+        ))}
+        <div className="absolute" style={{ left: "50%", top: "52%" }}>
+          <div className="w-4 h-4 rounded-full bg-blue-400 border-2 border-white" style={{ boxShadow: "0 0 0 6px rgba(96,165,250,0.2)" }} />
+        </div>
+      </div>
+
+      {selected && (
+        <div className="mx-5 mb-3 bg-white/5 border border-primary/30 rounded-2xl p-4">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <p className="text-white font-oswald font-semibold text-base">{selected.name}</p>
+              <p className="text-white/40 text-xs mt-0.5">{selected.address}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-primary font-oswald font-black text-2xl leading-none">{selected.spot_record}</p>
+              <p className="text-white/40 text-xs">рекорд</p>
+            </div>
+          </div>
+          <button
+            onClick={() => onScan(selected)}
+            className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-oswald font-bold text-sm tracking-wide"
+          >
+            Начать тренировку
+          </button>
+        </div>
+      )}
+
+      <div className="px-5 flex-1 overflow-y-auto pb-4">
+        <p className="text-xs text-white/30 uppercase tracking-widest font-semibold mb-2">Все площадки</p>
+        <div className="flex flex-col gap-2">
+          {display.map(spot => (
+            <button
+              key={spot.id}
+              onClick={() => setSelected(selected?.id === spot.id ? null : spot)}
+              className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition-colors ${selected?.id === spot.id ? "bg-primary/10 border border-primary/30" : "bg-white/5 border border-white/10"}`}
+            >
+              <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
+                <Icon name="Dumbbell" size={16} className="text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-white truncate">{spot.name}</p>
+                <p className="text-xs text-white/40">{spot.address}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-primary font-oswald font-bold text-lg leading-none">{spot.spot_record}</p>
+                <p className="text-white/30 text-[10px]">рекорд</p>
+              </div>
+            </button>
+          ))}
+          {apiSpots.length === 0 && (
+            <div className="text-center py-6 text-white/30 text-sm">Споттов пока нет. Добавь первый!</div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -811,30 +934,39 @@ const NAV = [
   { id: "rating", label: "Рейтинг", icon: "Trophy" },
 ] as const;
 
-export default function Index() {
+export default function Index({ user, onLogout }: { user: AppUser; onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>("home");
   const [showNotifs, setShowNotifs] = useState(false);
   const [showWorkout, setShowWorkout] = useState(false);
+  const [workoutSpot, setWorkoutSpot] = useState<Spot>(NEAREST_SPOT);
   const unread = NOTIFICATIONS.filter(n => !n.read).length;
+
+  const handleSaveWorkout = useCallback(async (maxReps: number, totalReps: number, mode: string, sets: number[]) => {
+    await recordsApi.save(workoutSpot.id, maxReps, totalReps, mode, sets);
+  }, [workoutSpot.id]);
 
   return (
     <div className="fixed inset-0 bg-[#080808] flex flex-col max-w-md mx-auto overflow-hidden">
-      {/* Screen */}
       <div className="flex-1 overflow-y-auto" key={tab}>
         {tab === "home" && (
           <HomeScreen
             onScan={() => setShowWorkout(true)}
             onNotif={() => setShowNotifs(true)}
             unread={unread}
-            onProfile={() => {}}
+            onProfile={onLogout}
+            user={user}
           />
         )}
-        {tab === "map" && <MapScreen onScan={() => setShowWorkout(true)} />}
+        {tab === "map" && (
+          <MapScreenReal onScan={(spot) => {
+            setWorkoutSpot({ id: spot.id, name: spot.name, dist: "", pullupRecord: 0, myRecord: 0, leaders: [] });
+            setShowWorkout(true);
+          }} />
+        )}
         {tab === "duels" && <DuelsScreen />}
-        {tab === "rating" && <RatingScreen />}
+        {tab === "rating" && <RatingScreenReal currentUserId={user.id} />}
       </div>
 
-      {/* Tab bar */}
       <div className="shrink-0 border-t border-white/10 bg-[#080808]/95 backdrop-blur-md px-2 pb-safe">
         <div className="flex">
           {NAV.map(t => (
@@ -859,9 +991,14 @@ export default function Index() {
         </div>
       </div>
 
-      {/* Overlays */}
       {showNotifs && <NotifPanel onClose={() => setShowNotifs(false)} />}
-      {showWorkout && <WorkoutFlow spot={NEAREST_SPOT} onClose={() => setShowWorkout(false)} />}
+      {showWorkout && (
+        <WorkoutFlow
+          spot={workoutSpot}
+          onClose={() => setShowWorkout(false)}
+          onSave={handleSaveWorkout}
+        />
+      )}
     </div>
   );
 }

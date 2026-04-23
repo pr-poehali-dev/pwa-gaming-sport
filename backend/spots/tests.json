@@ -1,0 +1,29 @@
+{
+  "tests": [
+    {
+      "name": "List spots",
+      "method": "GET",
+      "path": "/?action=list",
+      "expectedStatus": 200,
+      "expectedBody": [],
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Checkin - no QR",
+      "method": "GET",
+      "path": "/?action=checkin",
+      "expectedStatus": 400,
+      "expectedBody": {"error": "QR не указан"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Create spot - no auth",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "create", "name": "Test", "lat": 55.75, "lng": 37.62},
+      "expectedStatus": 401,
+      "expectedBody": {"error": "Требуется авторизация"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}
