@@ -25,13 +25,12 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-def send_verify_email(email: str, nickname: str, token: str):
+def send_verify_email(email: str, nickname: str, token: str, app_url: str = "https://p4680007.poehali.dev"):
     host = os.environ.get("SMTP_HOST", "")
     user = os.environ.get("SMTP_USER", "")
     password = os.environ.get("SMTP_PASSWORD", "")
     if not host:
         return
-    app_url = "https://p4680007.poehali.dev"
     link = f"{app_url}?verify={token}"
     msg = MIMEMultipart("alternative")
     msg["Subject"] = "Подтверди email — PullUp App"
@@ -63,6 +62,7 @@ def handler(event: dict, context) -> dict:
     token = event.get("headers", {}).get("X-Auth-Token", "")
     params = event.get("queryStringParameters") or {}
     action = body.get("action") or params.get("action", "")
+    origin = event.get("headers", {}).get("Origin") or event.get("headers", {}).get("origin") or "https://p4680007.poehali.dev"
 
     # POST action=register
     if method == "POST" and action == "register":
@@ -88,7 +88,7 @@ def handler(event: dict, context) -> dict:
                 (email, nickname, hash_password(password), verify_token, expires)
             )
             conn.commit()
-            send_verify_email(email, nickname, verify_token)
+            send_verify_email(email, nickname, verify_token, origin)
             return {"statusCode": 200, "headers": CORS, "body": json.dumps({"ok": True, "message": "Письмо отправлено на " + email})}
         except psycopg2.errors.UniqueViolation:
             conn.rollback()
