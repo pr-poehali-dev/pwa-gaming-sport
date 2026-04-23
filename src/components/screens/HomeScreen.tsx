@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Icon from "@/components/ui/icon";
+import { records as recordsApi } from "@/api";
 
 interface AppUser {
   id: number;
@@ -31,6 +32,14 @@ const NEAREST_SPOT: Spot = {
   ],
 };
 
+const RANK_LABELS: Record<number, string> = {
+  1: "I ранга",
+  2: "II ранга",
+  3: "III ранга",
+  4: "IV ранга",
+  5: "V ранга",
+};
+
 // ─── Home Screen ──────────────────────────────────────────────────────────────
 export function HomeScreen({ onScan, onNotif, unread, onProfile, user }: {
   onScan: () => void;
@@ -43,6 +52,37 @@ export function HomeScreen({ onScan, onNotif, unread, onProfile, user }: {
   const streak = user.streak_days;
   const toNextLevel = Math.max(0, (user.rank_level * 10) - streak);
 
+  // Real progress data
+  const [myRecords, setMyRecords] = useState<{ max_reps: number; total_reps: number; recorded_at: string }[]>([]);
+  const [myBest, setMyBest] = useState(0);
+  const [weekTotal, setWeekTotal] = useState(0);
+  const [weekChart, setWeekChart] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
+
+  useEffect(() => {
+    recordsApi.my().then(data => {
+      if (!Array.isArray(data) || data.length === 0) return;
+      setMyRecords(data);
+
+      const best = Math.max(...data.map((r: { max_reps: number }) => r.max_reps));
+      setMyBest(best);
+
+      // Build last 7 days chart
+      const chart = [0, 0, 0, 0, 0, 0, 0];
+      const now = new Date();
+      data.forEach((r: { total_reps: number; recorded_at: string }) => {
+        const date = new Date(r.recorded_at);
+        const diffDays = Math.floor((now.getTime() - date.getTime()) / 86400000);
+        if (diffDays >= 0 && diffDays < 7) {
+          chart[6 - diffDays] += r.total_reps;
+        }
+      });
+      setWeekChart(chart);
+      setWeekTotal(chart.reduce((a, b) => a + b, 0));
+    });
+  }, []);
+
+  const chartMax = Math.max(...weekChart, 1);
+
   return (
     <div className="flex flex-col min-h-full">
       {/* Top bar */}
@@ -54,13 +94,13 @@ export function HomeScreen({ onScan, onNotif, unread, onProfile, user }: {
           <svg className="absolute inset-0 w-12 h-12 -rotate-90" viewBox="0 0 48 48">
             <circle cx="24" cy="24" r="22" fill="none" stroke="white" strokeOpacity="0.1" strokeWidth="2.5" />
             <circle cx="24" cy="24" r="22" fill="none" stroke="hsl(54,100%,54%)" strokeWidth="2.5"
-              strokeDasharray={`${2 * Math.PI * 22 * 0.62} ${2 * Math.PI * 22}`}
+              strokeDasharray={`${2 * Math.PI * 22 * Math.min(streak / (user.rank_level * 10), 1)} ${2 * Math.PI * 22}`}
               strokeLinecap="round" />
           </svg>
         </button>
 
         <div className="flex flex-col items-center">
-          <p className="text-white font-oswald font-semibold text-sm tracking-wide">Атлет II ранга</p>
+          <p className="text-white font-oswald font-semibold text-sm tracking-wide">Атлет {RANK_LABELS[user.rank_level] ?? "I ранга"}</p>
           <div className="flex items-center gap-1 mt-0.5">
             <span className="text-base">🔥</span>
             <span className="text-primary font-oswald font-bold text-sm">{streak}</span>
@@ -142,7 +182,7 @@ export function HomeScreen({ onScan, onNotif, unread, onProfile, user }: {
                 ТЫ
               </div>
               <p className="flex-1 text-sm font-medium text-primary">Ты</p>
-              <p className="font-oswald font-bold text-base text-primary">{NEAREST_SPOT.myRecord}</p>
+              <p className="font-oswald font-bold text-base text-primary">{myBest || NEAREST_SPOT.myRecord}</p>
               <p className="text-white/30 text-xs">подт.</p>
             </div>
           </div>
@@ -152,28 +192,35 @@ export function HomeScreen({ onScan, onNotif, unread, onProfile, user }: {
           <div className="p-4">
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs text-white/40 font-medium">Подтягивания за неделю</p>
-              <p className="text-xs text-primary font-bold">+{toNextLevel} до III ранга</p>
+              <p className="text-xs text-primary font-bold">+{toNextLevel} до {RANK_LABELS[(user.rank_level + 1)] ?? "макс. ранга"}</p>
             </div>
-            <div className="flex items-end gap-1.5 h-14 mb-3">
-              {[8, 15, 0, 12, 10, 18, 15].map((v, i) => (
-                <div key={i} className="flex-1 flex flex-col justify-end h-full">
-                  <div
-                    className={`rounded-t-md ${i === 6 ? "bg-primary" : "bg-white/20"}`}
-                    style={{ height: `${v === 0 ? 2 : (v / 18) * 100}%`, minHeight: v === 0 ? 2 : undefined }}
-                  />
+
+            {myRecords.length === 0 ? (
+              <p className="text-white/20 text-xs text-center py-4">Нет тренировок за неделю</p>
+            ) : (
+              <>
+                <div className="flex items-end gap-1.5 h-14 mb-3">
+                  {weekChart.map((v, i) => (
+                    <div key={i} className="flex-1 flex flex-col justify-end h-full">
+                      <div
+                        className={`rounded-t-md ${i === 6 ? "bg-primary" : "bg-white/20"}`}
+                        style={{ height: `${v === 0 ? 2 : (v / chartMax) * 100}%`, minHeight: v === 0 ? 2 : undefined }}
+                      />
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-2xl font-oswald font-black text-white">78</span>
-                <span className="text-white/40 text-xs ml-1">всего за неделю</span>
-              </div>
-              <div className="text-right">
-                <span className="text-2xl font-oswald font-black text-primary">15</span>
-                <span className="text-white/40 text-xs ml-1">личный рекорд</span>
-              </div>
-            </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-2xl font-oswald font-black text-white">{weekTotal}</span>
+                    <span className="text-white/40 text-xs ml-1">всего за неделю</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-2xl font-oswald font-black text-primary">{myBest}</span>
+                    <span className="text-white/40 text-xs ml-1">личный рекорд</span>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

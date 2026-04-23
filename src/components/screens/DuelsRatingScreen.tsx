@@ -151,8 +151,8 @@ export function RatingScreenReal({ currentUserId }: { currentUserId: number }) {
     });
   }, [currentUserId]);
 
-  const display = loaded && leaders.length > 0 ? leaders : GLOBAL_LEADERS;
-  const top3 = display.length >= 3 ? [display[1], display[0], display[2]] : display;
+  const display = leaders;
+  const top3 = display.length >= 3 ? [display[1], display[0], display[2]] : [];
 
   return (
     <div className="flex flex-col h-full">
@@ -187,6 +187,14 @@ export function RatingScreenReal({ currentUserId }: { currentUserId: number }) {
       )}
 
       <div className="px-5 flex flex-col gap-2 overflow-y-auto pb-4">
+        {!loaded && (
+          <div className="flex justify-center py-10">
+            <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+          </div>
+        )}
+        {loaded && display.length === 0 && (
+          <div className="text-center py-10 text-white/30 text-sm">Пока нет рекордов. Будь первым!</div>
+        )}
         {display.map((u) => (
           <div
             key={u.rank}
@@ -206,9 +214,6 @@ export function RatingScreenReal({ currentUserId }: { currentUserId: number }) {
             </div>
           </div>
         ))}
-        {loaded && leaders.length === 0 && (
-          <div className="text-center py-10 text-white/30 text-sm">Пока нет рекордов. Будь первым!</div>
-        )}
       </div>
     </div>
   );
