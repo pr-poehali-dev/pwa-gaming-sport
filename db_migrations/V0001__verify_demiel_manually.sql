@@ -1,0 +1,1 @@
+UPDATE t_p4680007_pwa_gaming_sport.users SET email_verified = true, verify_token = NULL WHERE id = 1;

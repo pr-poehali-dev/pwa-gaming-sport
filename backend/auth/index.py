@@ -62,7 +62,7 @@ def handler(event: dict, context) -> dict:
     token = event.get("headers", {}).get("X-Auth-Token", "")
     params = event.get("queryStringParameters") or {}
     action = body.get("action") or params.get("action", "")
-    origin = event.get("headers", {}).get("Origin") or event.get("headers", {}).get("origin") or "https://p4680007.poehali.dev"
+    origin = "https://p4680007.poehali.dev"
 
     # POST action=register
     if method == "POST" and action == "register":
