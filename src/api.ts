@@ -8,13 +8,25 @@ function getToken() {
   return localStorage.getItem("auth_token") || "";
 }
 
+async function parseResponse(res: Response) {
+  const text = await res.text();
+  try {
+    const parsed = JSON.parse(text);
+    // Бэкенд иногда возвращает body как строку (двойной JSON) — парсим ещё раз
+    if (typeof parsed === "string") return JSON.parse(parsed);
+    return parsed;
+  } catch {
+    return text;
+  }
+}
+
 async function post(url: string, body: object) {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Auth-Token": getToken() },
     body: JSON.stringify(body),
   });
-  return res.json();
+  return parseResponse(res);
 }
 
 async function get(url: string, params: Record<string, string> = {}) {
@@ -22,7 +34,7 @@ async function get(url: string, params: Record<string, string> = {}) {
   const res = await fetch(`${url}${q ? "?" + q : ""}`, {
     headers: { "X-Auth-Token": getToken() },
   });
-  return res.json();
+  return parseResponse(res);
 }
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
